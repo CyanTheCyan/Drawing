@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Draw & Guess (P2P)</title>
+  <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+  <style>
+    body { font-family: sans-serif; text-align: center; }
+    canvas { border: 2px solid black; background: white; }
+    #chat { height: 120px; overflow-y: auto; border: 1px solid black; }
+  </style>
+</head>
+<body>
+
+<h2 id="info">Connecting...</h2>
+<canvas id="canvas" width="500" height="300"></canvas>
+<div id="chat"></div>
+<input id="input" placeholder="Type guess..." />
+
+<script>
+const peer = new Peer();
+let connections = [];
+let isHost = false;
+
+const canvas = document.getElementById("canvas");
+const ctx = canvas.getContext("2d");
+
+const words = ["cat","dog","car","tree"];
+let currentWord = "";
+let drawing = false;
+
+// SHOW ID
+peer.on("open", id => {
+  document.getElementById("info").innerText =
+    "Your ID: " + id + " | Share this with friends";
+  isHost = true;
+});
+
+// ACCEPT CONNECTIONS
+peer.on("connection", conn => {
+  connections.push(conn);
+
+  conn.on("data", data => handleData(data, conn));
+});
+
+// JOIN BUTTON (type ID manually)
+const joinId = prompt("Enter host ID to join (or leave blank to host):");
+if (joinId) {
+  isHost = false;
+  const conn = peer.connect(joinId);
+  connections.push(conn);
+
+  conn.on("data", data => handleData(data, conn));
+}
+
+// DRAWING
+canvas.onmousedown = () => {
+  if (!isHost) return;
+  drawing = true;
+};
+
+canvas.onmouseup = () => drawing = false;
+
+canvas.onmousemove = e => {
+  if (!drawing || !isHost) return;
+
+  const data = { type: "draw", x: e.offsetX, y: e.offsetY };
+  sendToAll(data);
+  draw(data);
+};
+
+function draw(d) {
+  ctx.lineTo(d.x, d.y);
+  ctx.stroke();
+}
+
+// CHAT
+const chat = document.getElementById("chat");
+const input = document.getElementById("input");
+
+input.addEventListener("keydown", e => {
+  if (e.key === "Enter") {
+    const msg = input.value;
+    input.value = "";
+
+    if (msg.toLowerCase() === currentWord.toLowerCase()) {
+      chat.innerHTML += "<div><b>Correct!</b></div>";
+
+      if (isHost) newRound();
+    } else {
+      chat.innerHTML += "<div>" + msg + "</div>";
+      sendToAll({ type: "chat", msg });
+    }
+  }
+});
+
+// HANDLE DATA
+function handleData(data, conn) {
+  if (data.type === "draw") draw(data);
+  if (data.type === "chat") {
+    chat.innerHTML += "<div>" + data.msg + "</div>";
+  }
+  if (data.type === "newWord") {
+    currentWord = data.word;
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+  }
+}
+
+// SEND
+function sendToAll(data) {
+  connections.forEach(c => c.send(data));
+}
+
+// NEW ROUND
+function newRound() {
+  currentWord = words[Math.floor(Math.random()*words.length)];
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  sendToAll({ type: "newWord", word: currentWord });
+}
+
+</script>
+</body>
+</html>
