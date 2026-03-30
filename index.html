@@ -2,16 +2,29 @@
 <html>
 <head>
 <meta charset="UTF-8">
-<title>Advanced Sandbox</title>
+<title>Smooth Sandbox</title>
 <style>
-body { margin:0; background:#111; color:white; text-align:center; font-family:sans-serif;}
-canvas { border:2px solid white; cursor:crosshair; }
-button { margin:4px; padding:8px; font-weight:bold; cursor:pointer;}
+body {
+  margin: 0;
+  background: white;
+  text-align: center;
+  font-family: sans-serif;
+}
+canvas {
+  border: 1px solid #ccc;
+  cursor: crosshair;
+}
+button {
+  margin: 4px;
+  padding: 8px;
+  font-weight: bold;
+  cursor: pointer;
+}
 </style>
 </head>
 <body>
 
-<h2>⚡ Advanced Sandbox</h2>
+<h3>Smooth Sandbox</h3>
 
 <div>
 <button onclick="setMat('sand')">Sand</button>
@@ -24,13 +37,13 @@ button { margin:4px; padding:8px; font-weight:bold; cursor:pointer;}
 <button onclick="setMat('eraser')">Eraser</button>
 </div>
 
-<canvas id="c" width="600" height="400"></canvas>
+<canvas id="c" width="700" height="450"></canvas>
 
 <script>
 const canvas = document.getElementById("c");
 const ctx = canvas.getContext("2d");
 
-const SIZE = 4;
+const SIZE = 2; // smaller = smoother look
 const W = canvas.width / SIZE;
 const H = canvas.height / SIZE;
 
@@ -46,12 +59,16 @@ canvas.onmousedown = ()=>drawing=true;
 canvas.onmouseup = ()=>drawing=false;
 canvas.onmousemove = (e)=>{
  if(!drawing) return;
+
  const r = canvas.getBoundingClientRect();
  const x = Math.floor((e.clientX-r.left)/SIZE);
  const y = Math.floor((e.clientY-r.top)/SIZE);
 
- for(let dx=-2;dx<=2;dx++){
-  for(let dy=-2;dy<=2;dy++){
+ // circular brush (less blocky)
+ for(let dx=-3;dx<=3;dx++){
+  for(let dy=-3;dy<=3;dy++){
+    if(dx*dx+dy*dy > 9) continue;
+
     let nx=x+dx, ny=y+dy;
     if(nx>=0&&ny>=0&&nx<W&&ny<H){
       if(mat==="eraser"){
@@ -66,10 +83,9 @@ canvas.onmousemove = (e)=>{
 };
 
 function update(){
- // reset power decay
  for(let x=0;x<W;x++){
   for(let y=0;y<H;y++){
-    power[x][y]*=0.9;
+    power[x][y]*=0.92;
   }
  }
 
@@ -78,14 +94,17 @@ function update(){
     let m = grid[x][y];
     if(!m) continue;
 
-    // SAND
     if(m==="sand"){
       if(y+1<H && !grid[x][y+1]){
         grid[x][y+1]=m; grid[x][y]=null;
+      } else {
+        let dir = Math.random()<0.5?-1:1;
+        if(x+dir>=0 && x+dir<W && y+1<H && !grid[x+dir][y+1]){
+          grid[x+dir][y+1]=m; grid[x][y]=null;
+        }
       }
     }
 
-    // WATER
     if(m==="water"){
       let dir = Math.random()<0.5?-1:1;
       if(y+1<H && !grid[x][y+1]){
@@ -95,45 +114,39 @@ function update(){
       }
     }
 
-    // SLIME (slow + sticky)
     if(m==="slime"){
-      if(Math.random()<0.3){
+      if(Math.random()<0.25){
         if(y+1<H && !grid[x][y+1]){
           grid[x][y+1]=m; grid[x][y]=null;
         }
       }
     }
 
-    // URANIUM (spreads)
     if(m==="uranium"){
-      if(Math.random()<0.01){
-        let dx = Math.floor(Math.random()*3)-1;
-        let dy = Math.floor(Math.random()*3)-1;
-        let nx=x+dx, ny=y+dy;
+      if(Math.random()<0.005){
+        let nx=x+(Math.random()*3|0)-1;
+        let ny=y+(Math.random()*3|0)-1;
         if(nx>=0&&ny>=0&&nx<W&&ny<H && !grid[nx][ny]){
           grid[nx][ny]="uranium";
         }
       }
     }
 
-    // BATTERY (source)
     if(m==="battery"){
       power[x][y]=1;
     }
 
-    // WIRE conducts
     if(m==="wire"){
       let dirs=[[1,0],[-1,0],[0,1],[0,-1]];
       for(let d of dirs){
         let nx=x+d[0], ny=y+d[1];
         if(nx>=0&&ny>=0&&nx<W&&ny<H){
-          if(power[nx][ny]>0.5){
+          if(power[nx][ny]>0.4){
             power[x][y]=1;
           }
         }
       }
     }
-
   }
  }
 }
@@ -146,23 +159,27 @@ function render(){
     let m=grid[x][y];
     if(!m) continue;
 
-    let color="#fff";
+    let color="#000";
 
-    if(m==="sand") color="#d9c27a";
-    if(m==="water") color="#3399ff";
-    if(m==="stone") color="#777";
-    if(m==="slime") color="#00ff88";
-    if(m==="uranium") color="#55ff55";
-    if(m==="battery") color="#ff3333";
+    if(m==="sand") color="#e6d28f";
+    if(m==="water") color="#4aa3ff";
+    if(m==="stone") color="#999";
+    if(m==="slime") color="#66ffbb";
+    if(m==="uranium") color="#66ff66";
+    if(m==="battery") color="#ff5555";
 
     if(m==="wire"){
-      color = power[x][y]>0.5 ? "#ffff00" : "#555";
+      color = power[x][y]>0.5 ? "#ffd84d" : "#bbb";
     }
 
+    // soft rendering
+    ctx.globalAlpha = 0.9;
     ctx.fillStyle=color;
     ctx.fillRect(x*SIZE,y*SIZE,SIZE,SIZE);
   }
  }
+
+ ctx.globalAlpha = 1;
 }
 
 function loop(){
