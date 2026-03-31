@@ -2,34 +2,13 @@
 <html>
 <head>
 <meta charset="UTF-8">
-<title>Doodle Sandbox</title>
+<title>Advanced Machine Sandbox</title>
 <style>
 body { margin:0; background:white; overflow:hidden; font-family:sans-serif; }
 canvas { display:block; touch-action:none; }
-#ui { position:absolute; top:10px; left:10px; z-index:10; }
-button { font-size:16px; margin:2px; }
 </style>
 </head>
 <body>
-
-<div id="ui">
-  <div>
-    Materials: 
-    <button onclick="currentMaterial='sand'">Sand</button>
-    <button onclick="currentMaterial='stone'">Stone</button>
-    <button onclick="currentMaterial='slime'">Slime</button>
-    <button onclick="currentMaterial='water'">Water</button>
-    <button onclick="currentMaterial='wire'">Wire</button>
-    <button onclick="currentMaterial='uranium'">Uranium</button>
-    <button onclick="currentMaterial='battery'">Battery</button>
-  </div>
-  <div>
-    Machines:
-    <button onclick="currentMachine='pipe'">Pipe</button>
-    <button onclick="currentMachine='motor'">Motor</button>
-    <button onclick="currentMachine='piston'">Piston</button>
-  </div>
-</div>
 
 <canvas id="c"></canvas>
 
@@ -37,165 +16,204 @@ button { font-size:16px; margin:2px; }
 const canvas = document.getElementById("c");
 const ctx = canvas.getContext("2d");
 
-let SIZE = 3;
-let W,H;
-let grid=[], power=[], machines=[];
-
 function resize(){
   canvas.width = window.innerWidth;
   canvas.height = window.innerHeight;
-  W = Math.floor(canvas.width/SIZE);
-  H = Math.floor(canvas.height/SIZE);
-  if(grid.length===0) init();
 }
+resize();
 window.onresize = resize;
 
+const SIZE = 3;
+let W,H;
+
+let grid, power, machines;
+
 function init(){
+  W = Math.floor(canvas.width/SIZE);
+  H = Math.floor(canvas.height/SIZE);
   grid = Array.from({length:W},()=>Array(H).fill(null));
   power = Array.from({length:W},()=>Array(H).fill(0));
   machines = [];
-  // starter battery
-  let cx = Math.floor(W/2), cy = Math.floor(H/2);
-  grid[cx][cy]="battery";
-  machines.push({type:"pipe", x:cx+3, y:cy, mode:"blow", link:null, extended:false});
 }
+init();
 
-let currentMaterial="sand";
-let currentMachine=null;
+let mat="sand";
+let placingMachine=null;
 let drawing=false;
+let linking=null;
 
-// keyboard shortcuts
-document.addEventListener("keydown", e=>{
-  if(e.key==="1") currentMaterial="sand";
-  if(e.key==="2") currentMaterial="stone";
-  if(e.key==="3") currentMaterial="slime";
-  if(e.key==="4") currentMaterial="water";
-  if(e.key==="5") currentMaterial="wire";
-  if(e.key==="6") currentMaterial="uranium";
-  if(e.key==="7") currentMaterial="battery";
-  if(e.key==="p") currentMachine="pipe";
-  if(e.key==="m") currentMachine="motor";
-  if(e.key==="o") currentMachine="piston";
+// MATERIAL SELECT
+document.addEventListener("keydown",e=>{
+ if(e.key==="p") placingMachine="pipe";
+ if(e.key==="m") placingMachine="motor";
+ if(e.key==="o") placingMachine="piston";
 });
 
-// safe cell access
-function getCell(x,y){ return grid[x] && grid[x][y]; }
-function setCell(x,y,val){ if(grid[x] && y>=0 && y<H) grid[x][y]=val; }
-
+// GET POS
 function pos(e){
-  let r=canvas.getBoundingClientRect();
-  let x = e.touches ? e.touches[0].clientX : e.clientX;
-  let y = e.touches ? e.touches[0].clientY : e.clientY;
-  return {x: Math.floor((x-r.left)/SIZE), y: Math.floor((y-r.top)/SIZE)};
+ let r=canvas.getBoundingClientRect();
+ let x=(e.touches?e.touches[0].clientX:e.clientX)-r.left;
+ let y=(e.touches?e.touches[0].clientY:e.clientY)-r.top;
+ return {
+  x:Math.floor(x/SIZE),
+  y:Math.floor(y/SIZE)
+ };
 }
 
-function drawMaterial(x,y){
-  for(let dx=-2;dx<=2;dx++){
-    for(let dy=-2;dy<=2;dy++){
-      let nx=x+dx, ny=y+dy;
-      if(nx>=0 && ny>=0 && nx<W && ny<H && currentMaterial) setCell(nx,ny,currentMaterial);
-    }
-  }
-}
+// CLICK
+canvas.onmousedown=(e)=>{
+ let {x,y}=pos(e);
 
-// pointer events
-canvas.onpointerdown = e=>{
-  let p = pos(e);
-  if(currentMachine){
-    machines.push({type:currentMachine, x:p.x, y:p.y, mode:"blow", link:null, extended:false});
-  } else if(currentMaterial){
-    drawing=true;
-    drawMaterial(p.x,p.y);
-  }
+ if(e.shiftKey){
+   // LINK SYSTEM
+   if(!linking){
+     linking={x,y};
+   } else {
+     machines.forEach(m=>{
+       if(m.x===linking.x && m.y===linking.y){
+         m.link={x,y};
+       }
+     });
+     linking=null;
+   }
+   return;
+ }
+
+ if(placingMachine){
+   machines.push({
+     type:placingMachine,
+     x,y,
+     mode: Math.random()<0.5?"suck":"blow",
+     link:null,
+     dir: [1,0],
+     extended:false
+   });
+   placingMachine=null;
+   return;
+ }
+
+ drawing=true;
 };
-canvas.onpointerup = ()=>drawing=false;
-canvas.onpointermove = e=>{ if(drawing) drawMaterial(pos(e).x,pos(e).y); }
 
-// update loop
+canvas.onmouseup=()=>drawing=false;
+
+canvas.onmousemove=(e)=>{
+ if(!drawing) return;
+ let {x,y}=pos(e);
+
+ for(let dx=-2;dx<=2;dx++){
+  for(let dy=-2;dy<=2;dy++){
+   let nx=x+dx, ny=y+dy;
+   if(nx>=0&&ny>=0&&nx<W&&ny<H){
+     grid[nx][ny]="sand";
+   }
+  }
+ }
+};
+
+// UPDATE
 function update(){
-  // gravity
-  for(let y=H-2;y>=0;y--){
-    for(let x=0;x<W;x++){
-      let c = getCell(x,y);
-      if(c && !getCell(x,y+1) && c!=="battery" && !["wire"].includes(c)){
-        setCell(x,y+1,c);
-        setCell(x,y,null);
-      }
-    }
-  }
-  
-  // machines
-  machines.forEach(m=>{
-    let powered = m.link && getCell(m.link.x,m.link.y)==="battery";
 
-    if(m.type==="pipe" && powered){
-      let dx=1;
-      if(m.mode==="suck" && getCell(m.x+dx,m.y)){
-        setCell(m.x,m.y,getCell(m.x+dx,m.y));
-        setCell(m.x+dx,m.y,null);
-      } else if(m.mode==="blow" && !getCell(m.x+dx,m.y) && getCell(m.x,m.y)){
-        setCell(m.x+dx,m.y,getCell(m.x,m.y));
-        setCell(m.x,m.y,null);
-      }
-    }
-
-    if(m.type==="motor" && powered){
-      let dx=1;
-      if(getCell(m.x-dx,m.y)){
-        setCell(m.x,m.y,getCell(m.x-dx,m.y));
-        setCell(m.x-dx,m.y,null);
-      }
-    }
-
-    if(m.type==="piston"){
-      let dx=1;
-      if(powered && !m.extended && !getCell(m.x+dx,m.y)){
-        setCell(m.x+dx,m.y,"stone");
-        m.extended=true;
-      } else if(!powered && m.extended && getCell(m.x+dx,m.y)==="stone"){
-        setCell(m.x+dx,m.y,null);
-        m.extended=false;
-      }
-    }
-  });
-
-  // power
+ // gravity
+ for(let y=H-1;y>=0;y--){
   for(let x=0;x<W;x++){
-    for(let y=0;y<H;y++){
-      power[x][y]*=0.9;
-      if(getCell(x,y)==="battery") power[x][y]=1;
+    if(grid[x][y] && y+1<H && !grid[x][y+1]){
+      grid[x][y+1]=grid[x][y];
+      grid[x][y]=null;
     }
   }
+ }
+
+ // machines
+ machines.forEach(m=>{
+   let powered=false;
+
+   if(m.link){
+     if(power[m.link.x]?.[m.link.y]>0.5) powered=true;
+   }
+
+   if(m.type==="pipe"){
+     if(powered){
+       let dx=1, dy=0;
+
+       if(m.mode==="suck"){
+         if(grid[m.x+dx]?.[m.y]){
+           grid[m.x][m.y]=grid[m.x+dx][m.y];
+           grid[m.x+dx][m.y]=null;
+         }
+       } else {
+         if(!grid[m.x+dx]?.[m.y] && grid[m.x][m.y]){
+           grid[m.x+dx][m.y]=grid[m.x][m.y];
+           grid[m.x][m.y]=null;
+         }
+       }
+     }
+   }
+
+   if(m.type==="motor"){
+     if(powered){
+       let dx=1,dy=0;
+       if(grid[m.x-dx]?.[m.y]){
+         grid[m.x][m.y]=grid[m.x-dx][m.y];
+         grid[m.x-dx][m.y]=null;
+       }
+     }
+   }
+
+   if(m.type==="piston"){
+     if(powered && !m.extended){
+       let dx=1;
+       if(!grid[m.x+dx]?.[m.y]){
+         grid[m.x+dx][m.y]="stone";
+         m.extended=true;
+       }
+     } else if(!powered && m.extended){
+       let dx=1;
+       if(grid[m.x+dx]?.[m.y]==="stone"){
+         grid[m.x+dx][m.y]=null;
+       }
+       m.extended=false;
+     }
+   }
+ });
+
+ // simple power spread
+ for(let x=0;x<W;x++){
+  for(let y=0;y<H;y++){
+    power[x][y]*=0.9;
+    if(grid[x][y]==="battery") power[x][y]=1;
+  }
+ }
 }
 
-// draw loop
+// DRAW
 function draw(){
-  ctx.clearRect(0,0,canvas.width,canvas.height);
-  for(let x=0;x<W;x++){
-    for(let y=0;y<H;y++){
-      let c=getCell(x,y);
-      if(c){
-        if(c==="battery") ctx.fillStyle="yellow";
-        else if(c==="stone") ctx.fillStyle="gray";
-        else if(c==="water") ctx.fillStyle="blue";
-        else if(c==="slime") ctx.fillStyle="green";
-        else if(c==="wire") ctx.fillStyle="orange";
-        else if(c==="uranium") ctx.fillStyle="purple";
-        else ctx.fillStyle="#d9c27a";
-        ctx.fillRect(x*SIZE,y*SIZE,SIZE,SIZE);
-      }
+ ctx.clearRect(0,0,canvas.width,canvas.height);
+
+ for(let x=0;x<W;x++){
+  for(let y=0;y<H;y++){
+    if(grid[x][y]){
+      ctx.fillStyle="#d9c27a";
+      ctx.fillRect(x*SIZE,y*SIZE,SIZE,SIZE);
     }
   }
+ }
 
-  machines.forEach(m=>{
-    if(m.type==="pipe") ctx.fillStyle="purple";
-    else if(m.type==="motor") ctx.fillStyle="blue";
-    else if(m.type==="piston") ctx.fillStyle="red";
-    ctx.fillRect(m.x*SIZE,m.y*SIZE,SIZE,SIZE);
-  });
+ machines.forEach(m=>{
+   if(m.type==="pipe") ctx.fillStyle="purple";
+   if(m.type==="motor") ctx.fillStyle="blue";
+   if(m.type==="piston") ctx.fillStyle="red";
+
+   ctx.fillRect(m.x*SIZE,m.y*SIZE,SIZE,SIZE);
+ });
 }
 
-function loop(){ update(); draw(); requestAnimationFrame(loop); }
+// LOOP
+function loop(){
+ update();
+ draw();
+ requestAnimationFrame(loop);
+}
 loop();
 </script>
 
