@@ -2,13 +2,22 @@
 <html>
 <head>
 <meta charset="UTF-8">
-<title>Machine Sandbox</title>
+<title>Doodle Sandbox</title>
 <style>
 body { margin:0; background:white; overflow:hidden; font-family:sans-serif; }
 canvas { display:block; touch-action:none; }
+#ui { position:absolute; top:10px; left:10px; z-index:10; }
+button { font-size:16px; margin:2px; }
 </style>
 </head>
 <body>
+
+<div id="ui">
+  <button onclick="placingMachine='pipe'">Pipe</button>
+  <button onclick="placingMachine='motor'">Motor</button>
+  <button onclick="placingMachine='piston'">Piston</button>
+  <button onclick="placingMachine=null">Draw Sand</button>
+</div>
 
 <canvas id="c"></canvas>
 
@@ -34,20 +43,15 @@ function init(){
   grid = Array.from({length:W},()=>Array(H).fill(null));
   power = Array.from({length:W},()=>Array(H).fill(0));
   machines = [];
+  
+  // Add a battery in the middle
+  grid[Math.floor(W/2)][Math.floor(H/2)] = "battery";
 }
 init();
 
-let mat="sand";
 let placingMachine=null;
 let drawing=false;
 let linking=null;
-
-// MATERIAL SELECT
-document.addEventListener("keydown",e=>{
- if(e.key==="p") placingMachine="pipe";
- if(e.key==="m") placingMachine="motor";
- if(e.key==="o") placingMachine="piston";
-});
 
 // GET POS
 function pos(e){
@@ -61,23 +65,8 @@ function pos(e){
 }
 
 // CLICK
-canvas.onmousedown=(e)=>{
+canvas.onpointerdown=(e)=>{
  let {x,y}=pos(e);
-
- if(e.shiftKey){
-   // LINK SYSTEM
-   if(!linking){
-     linking={x,y};
-   } else {
-     machines.forEach(m=>{
-       if(m.x===linking.x && m.y===linking.y){
-         m.link={x,y};
-       }
-     });
-     linking=null;
-   }
-   return;
- }
 
  if(placingMachine){
    machines.push({
@@ -88,19 +77,22 @@ canvas.onmousedown=(e)=>{
      dir: [1,0],
      extended:false
    });
-   placingMachine=null;
    return;
  }
 
  drawing=true;
+  addSand(x,y);
 };
 
-canvas.onmouseup=()=>drawing=false;
+canvas.onpointerup=()=>drawing=false;
 
-canvas.onmousemove=(e)=>{
+canvas.onpointermove=(e)=>{
  if(!drawing) return;
  let {x,y}=pos(e);
+ addSand(x,y);
+};
 
+function addSand(x,y){
  for(let dx=-2;dx<=2;dx++){
   for(let dy=-2;dy<=2;dy++){
    let nx=x+dx, ny=y+dy;
@@ -109,12 +101,10 @@ canvas.onmousemove=(e)=>{
    }
   }
  }
-};
+}
 
 // UPDATE
 function update(){
-
- // gravity
  for(let y=H-1;y>=0;y--){
   for(let x=0;x<W;x++){
     if(grid[x][y] && y+1<H && !grid[x][y+1]){
@@ -124,39 +114,28 @@ function update(){
   }
  }
 
- // machines
  machines.forEach(m=>{
    let powered=false;
-
    if(m.link){
      if(power[m.link.x]?.[m.link.y]>0.5) powered=true;
    }
 
-   if(m.type==="pipe"){
-     if(powered){
-       let dx=1, dy=0;
-
-       if(m.mode==="suck"){
-         if(grid[m.x+dx]?.[m.y]){
-           grid[m.x][m.y]=grid[m.x+dx][m.y];
-           grid[m.x+dx][m.y]=null;
-         }
-       } else {
-         if(!grid[m.x+dx]?.[m.y] && grid[m.x][m.y]){
-           grid[m.x+dx][m.y]=grid[m.x][m.y];
-           grid[m.x][m.y]=null;
-         }
+   if(m.type==="pipe" && powered){
+       let dx=1;
+       if(m.mode==="suck" && grid[m.x+dx]?.[m.y]){
+         grid[m.x][m.y]=grid[m.x+dx][m.y];
+         grid[m.x+dx][m.y]=null;
+       } else if(m.mode==="blow" && !grid[m.x+dx]?.[m.y] && grid[m.x][m.y]){
+         grid[m.x+dx][m.y]=grid[m.x][m.y];
+         grid[m.x][m.y]=null;
        }
-     }
    }
 
-   if(m.type==="motor"){
-     if(powered){
-       let dx=1,dy=0;
-       if(grid[m.x-dx]?.[m.y]){
-         grid[m.x][m.y]=grid[m.x-dx][m.y];
-         grid[m.x-dx][m.y]=null;
-       }
+   if(m.type==="motor" && powered){
+     let dx=1;
+     if(grid[m.x-dx]?.[m.y]){
+       grid[m.x][m.y]=grid[m.x-dx][m.y];
+       grid[m.x-dx][m.y]=null;
      }
    }
 
@@ -169,15 +148,12 @@ function update(){
        }
      } else if(!powered && m.extended){
        let dx=1;
-       if(grid[m.x+dx]?.[m.y]==="stone"){
-         grid[m.x+dx][m.y]=null;
-       }
+       if(grid[m.x+dx]?.[m.y]==="stone") grid[m.x+dx][m.y]=null;
        m.extended=false;
      }
    }
  });
 
- // simple power spread
  for(let x=0;x<W;x++){
   for(let y=0;y<H;y++){
     power[x][y]*=0.9;
@@ -193,7 +169,9 @@ function draw(){
  for(let x=0;x<W;x++){
   for(let y=0;y<H;y++){
     if(grid[x][y]){
-      ctx.fillStyle="#d9c27a";
+      if(grid[x][y]==="battery") ctx.fillStyle="yellow";
+      else if(grid[x][y]==="stone") ctx.fillStyle="gray";
+      else ctx.fillStyle="#d9c27a";
       ctx.fillRect(x*SIZE,y*SIZE,SIZE,SIZE);
     }
   }
@@ -203,17 +181,12 @@ function draw(){
    if(m.type==="pipe") ctx.fillStyle="purple";
    if(m.type==="motor") ctx.fillStyle="blue";
    if(m.type==="piston") ctx.fillStyle="red";
-
    ctx.fillRect(m.x*SIZE,m.y*SIZE,SIZE,SIZE);
  });
 }
 
 // LOOP
-function loop(){
- update();
- draw();
- requestAnimationFrame(loop);
-}
+function loop(){ update(); draw(); requestAnimationFrame(loop); }
 loop();
 </script>
 
